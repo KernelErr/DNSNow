@@ -1,0 +1,25 @@
+{
+  "name": "dns2",
+  "version": "1.4.0",
+  "description": "A DNS Server and Client Implementation in Pure JavaScript with no dependencies.",
+  "main": "index.js",
+  "scripts": {
+    "test": "node test"
+  },
+  "keywords": [
+    "dns"
+  ],
+  "author": "Liu Song <hi@lsong.org>",
+  "contributors": [
+    "Andris Reinman <andris.reinman@gmail.com>"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/song940/node-dns.git"
+  },
+  "bugs": {
+    "url": "https://github.com/song940/node-dns/issues"
+  },
+  "homepage": "https://github.com/song940/node-dns#readme"
+}
