@@ -13,6 +13,12 @@
         <span style="font-size: 10px;">Presented by inf.link</span>
     </div>
     <div class="righttop">
+        <div class="roundbotton" id="gfw-botton" style="display: none;">
+            <span style="position: relative; font-size: 25px; left: 8px;">G</span>
+        </div>
+        <div class="roundbotton" id="cache-botton">
+            <span style="position: relative; font-size: 25px; left: 8px;">C</span>
+        </div>
         <div class="roundbotton" id="help-botton">
             <span style="position: relative; font-size: 25px; left: 11px;">?</span>
         </div>
@@ -32,17 +38,34 @@
         <span id="dns-status" class="tips-text" style="top: 5px;">未连接</span><br><br>
         <span id="dns-safety" class="tips-text">您的DNS查询可能不安全。</span>
         <br><br><br>
-        <div>已保护 <span id="dns-count">0</span> 次查询</div>
+        <div>已保护 <span id="dns-count">0</span> 次查询 | 缓存 <span id="cache-count">0</span> 条记录</div>
     </div>
 </body>
 
 <script>
     const { ipcRenderer } = require('electron');
-    const helpbotton = document.querySelector("#help-botton");
-    var dnsCount = 0;
+    const helpBotton = document.querySelector("#help-botton");
+    const gfwBotton = document.querySelector("#gfw-botton");
+    const cacheBotton = document.querySelector("#cache-botton");
+    var dnsCount = 0, gfwStatus = 0, dnsStatus = 0, cacheCount = 0;
 
-    helpbotton.onclick = () => {
+    gfwBotton.onclick = () => {
+        var modeSwitch = document.getElementById("dnsnowSwitch");
+        ipcRenderer.send('changeGFWMode')
+        gfwStatus = ~gfwStatus;
+        if(dnsStatus) {
+            modeSwitch.checked = false;
+            ipcRenderer.send('switchDNSNow', 0);
+        }
+        changeStatusDisplay();
+    }
+
+    helpBotton.onclick = () => {
         ipcRenderer.send('openHelpWindow')
+    }
+
+    cacheBotton.onclick = () => {
+        ipcRenderer.send('cleanCache')
     }
 
     function switchDNSNow() {
@@ -54,20 +77,37 @@
         }
     }
 
-    ipcRenderer.on('statusChange', (event, arg) => {
-        if (arg) {
-            document.getElementById("dns-status").innerHTML = "已连接";
-            document.getElementById("dns-safety").innerHTML = "您的DNS查询已受到保护。";
+    function changeStatusDisplay() {
+        if (!gfwStatus) {
+            if (dnsStatus) {
+                document.getElementById("dns-status").innerHTML = "已连接";
+                document.getElementById("dns-safety").innerHTML = "您的DNS查询已受到保护。";
+            } else {
+                document.getElementById("dns-status").innerHTML = "未连接";
+                document.getElementById("dns-safety").innerHTML = "您的DNS查询可能不安全。";
+            }
         } else {
-            document.getElementById("dns-status").innerHTML = "未连接";
-            document.getElementById("dns-safety").innerHTML = "您的DNS查询可能不安全。";
+            if (dnsStatus) {
+                document.getElementById("dns-status").innerHTML = "已连接 - GFWMode";
+                document.getElementById("dns-safety").innerHTML = "您的DNS查询已受到保护。";
+            } else {
+                document.getElementById("dns-status").innerHTML = "未连接 - GFWMode";
+                document.getElementById("dns-safety").innerHTML = "您的DNS查询可能不安全。";
+            }
         }
+    }
+
+    ipcRenderer.on('statusChange', (event, arg) => {
+        dnsStatus = arg;
+        changeStatusDisplay();
     })
 
 
     setInterval(function () {
         dnsCount = ipcRenderer.sendSync('getDNSCount');
         document.getElementById("dns-count").innerHTML = dnsCount;
+        cacheCount = ipcRenderer.sendSync('getCacheCount');
+        document.getElementById("cache-count").innerHTML = cacheCount;
     }, 500);
 </script>
 

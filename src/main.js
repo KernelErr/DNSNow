@@ -5,9 +5,10 @@ const dns = require('./modules/dns2');
 const cfresolve = require('./modules/cloudflare');
 const { count } = require('console');
 const { Packet, Client: udpResolve } = dns;
+const FindProxyForURL = require('./modules/gfwlist');
 var LRU = require("lru-cache")
     , options = {
-        max: 10000
+        max: 2500
         , length: function (n, key) { return 1 }
         , maxAge: 1000 * 60 * 60
     }
@@ -16,6 +17,7 @@ var LRU = require("lru-cache")
 const queryType = ["A", "NS", "MD", "MF", "CNAME", "SOA", "MB", "MG", "MR", "NULL", "WKS", "PTR", "HINFO", "MINFO", "MX", "TXT", "AAAA", "SRV", "EDNS", "SPF", "AXFR", "MAILB", "MAILA", "ANY", "CAA"];
 var server;
 var dnsCount = 0;
+var gfwStatus = 0;
 Menu.setApplicationMenu(null);
 
 function createMainWindow() {
@@ -92,7 +94,7 @@ function initDNSServer() {
                 cacheResponse.header.id = request.header.id;
                 send(cacheResponse);
             } else if (name == 'cloudflare-dns.com') {
-                const cfServer = await udpResolve({ dns: '1.1.1.1' })('cloudflare-dns.com', 'A', dns.Packet.CLASS.IN);
+                const cfServer = await udpResolve({ dns: '1.1.1.1' })('cloudflare-dns.com', 'A', cls);
                 cfServer.answers.forEach(element => {
                     response.answers.push(element);
                 });
@@ -131,17 +133,91 @@ function initDNSServer() {
     });
 }
 
+function initGFWDNSServer() {
+    server = dns.createServer((request, send, rinfo) => {
+        const response = Packet.createResponseFromRequest(request);
+        const [question] = request.questions;
+        const { name, type } = question;
+        const cls = question.class;
+        (async () => {
+            if (cache.has(name + queryType[type - 1] + cls)) {
+                var cacheResponse = cache.get(name + queryType[type - 1] + cls);
+                cacheResponse.header.id = request.header.id;
+                send(cacheResponse);
+            } else if (name == 'cloudflare-dns.com' || FindProxyForURL('', name) == 'DIRECT') {
+                const cfRes = await udpResolve({ dns: '223.5.5.5' })(name, queryType[type - 1], cls);
+                cfRes.answers.forEach(element => {
+                    response.answers.push(element);
+                });
+                cfRes.authorities.forEach(element => {
+                    response.authorities.push(element);
+                });
+                cfRes.additionals.forEach(element => {
+                    response.additionals.push(element);
+                });
+                cache.set(name + queryType[type - 1] + cls, response)
+                send(response);
+            } else {
+                const cfRes = await cfresolve(name, queryType[type - 1]);
+                if (cfRes.Answer) {
+                    cfRes.Answer.forEach(element => {
+                        element.address = element.data;
+                        element.class = cls;
+                        response.answers.push(element);
+                    });
+                }
+                if (cfRes.Authority) {
+                    cfRes.Authority.forEach(element => {
+                        element.ns = element.name;
+                        element.class = cls;
+                        response.authorities.push(element);
+                    });
+                }
+                cache.set(name + queryType[type - 1] + cls, response)
+                send(response);
+            }
+        })();
+        dnsCount += 1;
+    });
+    server.on('request', (request, response, rinfo) => {
+        console.log(request.header.id, request.questions[0]);
+    });
+}
+
 ipcMain.on('switchDNSNow', (event, arg) => {
-    if (arg) {
-        initDNSServer();
-        server.listen(53);
-        event.reply('statusChange', 1);
+    if(!gfwStatus){
+        if (arg) {
+            initDNSServer();
+            server.listen(53);
+            event.reply('statusChange', 1);
+        } else {
+            server.close();
+            event.reply('statusChange', 0);
+        }
     } else {
-        server.close();
-        event.reply('statusChange', 0);
+        if (arg) {
+            initGFWDNSServer();
+            server.listen(53);
+            event.reply('statusChange', 1);
+        } else {
+            server.close();
+            event.reply('statusChange', 0);
+        }
     }
 })
 
 ipcMain.on('getDNSCount', (event, arg) => {
     event.returnValue = dnsCount;
+})
+
+ipcMain.on('getCacheCount', (event, arg) => {
+    event.returnValue = cache.length;
+})
+
+ipcMain.on('changeGFWMode', (event, arg) => {
+    gfwStatus = ~gfwStatus;
+})
+
+ipcMain.on('cleanCache', (event, arg) => {
+    cache.reset();
 })
